@@ -44,7 +44,10 @@
 
 thicknessGlabTop2<-function(DEM,glacier.outline,g,rho,h.min,rc,f.range,n,idw.P,hga,ncores)
 {
-  {
+  ###########################################################################################################
+  #setting default values 
+  ###########################################################################################################
+  
     if(missing(g)) g<-9.8
     if(missing(rho)) rho<-900 #density of ice in kgm-3
     if(missing(h.min)) h.min<-50 #maximum elevation difference in the buffer
@@ -63,8 +66,11 @@ thicknessGlabTop2<-function(DEM,glacier.outline,g,rho,h.min,rc,f.range,n,idw.P,h
       }
     }
   }
+  
+  #########################################################################################################
   #functions
-  {
+  #########################################################################################################
+  
     #making nxn buffer
     buffer<-function(r,c,size,data.mat){
       if(r-size<=0 | c-size<=0)
@@ -134,28 +140,12 @@ thicknessGlabTop2<-function(DEM,glacier.outline,g,rho,h.min,rc,f.range,n,idw.P,h
           +(as.numeric(empty.inner.cells[x,4])-known.data[,2])^2)^(-idw.P/2)
       return(sum(w*known.data[,3])/sum(w))
     }
-    #initiate parallel computing
-    # initiateParallel<-function(n.cores){
-    #   my.cluster <- parallel::makeCluster(n.cores,type = "PSOCK")
-    #   print(my.cluster)
-    #   doParallel::registerDoParallel(cl = my.cluster)
-    #   if(foreach::getDoParRegistered()==F)
-    #     stop("Check Parallelisation")
-    #   else
-    #     return(my.cluster)
-    # }
-    # #end parallel computing
-    # endParallel<-function() {
-    #   foreach::registerDoSEQ()
-    #   parallel::stopCluster(cl = my.cluster)
-    # }
-    `%dopar%` <- foreach::`%dopar%`
   }
 
 ######################################################################################################
 #model inputs preperation
 ######################################################################################################
-  {
+  
     #checking if the inouts have same projection, else correct
       if(as.character(raster::crs(DEM))=="+proj=longlat +datum=WGS84 +no_defs")
         stop("DEM must be projected..")
@@ -170,7 +160,7 @@ thicknessGlabTop2<-function(DEM,glacier.outline,g,rho,h.min,rc,f.range,n,idw.P,h
       glacier.slope<-raster::terrain(DEM, opt="slope", unit="degrees", neighbours=8)
       glacier.slope<-raster::mask(glacier.slope,glacier.outline)
       g.slope.data<-raster::as.matrix(glacier.slope)
-  }
+  
 
 
 
@@ -189,7 +179,6 @@ thicknessGlabTop2<-function(DEM,glacier.outline,g,rho,h.min,rc,f.range,n,idw.P,h
 #ONE TIME CODE
 #######################################################################################################
 
-{
   #row col data for all the masked DEM data
     g.DEM.rowcol<-raster::sampleRandom(g.DEM, size = length((as.vector(g.DEM.data))), na.rm=F, rowcol=T)
 
@@ -253,13 +242,13 @@ thicknessGlabTop2<-function(DEM,glacier.outline,g,rho,h.min,rc,f.range,n,idw.P,h
 
   data<-cbind(g.DEM.cells.rowcol[[3]],s.r.c)
   data.na<-na.omit(data)
-}
+
 
 
 #######################################################################################################
-# iterations
+# glacial lake thickness estimations - iterations
 #######################################################################################################
-{
+
 
   #register parallel cores
     my.cluster <- parallel::makeCluster(n.cores,type = "PSOCK")
@@ -268,15 +257,22 @@ thicknessGlabTop2<-function(DEM,glacier.outline,g,rho,h.min,rc,f.range,n,idw.P,h
     if(foreach::getDoParRegistered()==F)
       stop("Restart R Studio")
 
+ ######################################################################################################
+ #thickness algorithms
+ ######################################################################################################
+  
   message("Calculating Glacier Thickness.....")
   sum<-0
   count<-1
   thickness.f<-list()
+  
+  #thickness estimation for a various shape-factor'f' values
   for(f in f.range){
-    #selecting random cells
-
+    
     r.data<-list()
     sum.r.data<-0
+    
+    #number of iteration of thickness estimations for each shape factor values
     for(i in 1:n){
 
       print(paste0(f,"-",i,"     :: ",Sys.time()))
@@ -292,7 +288,6 @@ thicknessGlabTop2<-function(DEM,glacier.outline,g,rho,h.min,rc,f.range,n,idw.P,h
 
       known.data<-na.omit(rbind(rand.cells[,c(3,4,7)],g.DEM.cells.rowcol[[2]][,c(3:5)]))
 
-
       #idw interpolation
       interpolated.heights<-foreach::foreach(j=1:nrow(empty.inner.cells), .combine = 'c') %dopar%{
         idw(x=j,c=i)
@@ -306,30 +301,32 @@ thicknessGlabTop2<-function(DEM,glacier.outline,g,rho,h.min,rc,f.range,n,idw.P,h
       emp[,3]<-NA
       colnames(emp)[3]<-"thickness"
       raster.data<-rbind(rand.cells[,c(3,4,7)],empty.inner.cells[,c(3,4,7)],emp)
+      
+      #thickness raster for particular iteration for a value of shape-factor
       r.data[[i]]<-makeRaster2(as.data.frame(raster.data))
-      #raster::writeRaster(r.data[[i]],paste0("ThicknessRaster/thickness",f,"_",i,".tif"))
+       
       sum.r.data<-sum.r.data+r.data[[i]]
     }
-
+    
+    #thickness raster for a partuicular value of shape-factor (mean of all iterations)
     r.mean<-sum.r.data/n
-    #raster::writeRaster(r.mean,paste0("Thickness_F/thickness",f,".tif"))
-
     thickness.f[[as.character(f)]]<-r.mean
     count<-count+1
     sum<-sum+r.mean
 
   }
-  Sys.time()
+ 
 
   #stop parallel
     foreach::registerDoSEQ()
     parallel::stopCluster(cl = my.cluster)
-
+ 
+  #average thickness of glacier - mean of thickness calculated for all the shape-factors
   avg.thickness<-makeRaster(ras.data = as.matrix(sum/length(f.range)))
-  #raster::writeRaster(avg.thickness,"average.thickness.tif")
+
   message("Modelling Over.....")
   return(list(averageThickness=avg.thickness,thickness.shapeFactors=thickness.f))
-}
+
 
 #########################################################################################################
 #MODELLING OVER
