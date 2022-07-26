@@ -1,0 +1,21 @@
+Package: glabTop2
+Type: Package
+Title: Estimation of glacier thickness using GlabTop2 model
+Version: 0.1.0
+Author: Aniruddha Saha, Manoj Kumar Jain
+Maintainer: Aniruddha Saha <aniruddha_s@hy.iitr.ac.in>
+Description: For estimation of glacier thickness using GlabTop2 model concept and calibration of glabTop2 model, without use of any ground/observed data(based on the methodology proposed by Ramsankaran et al., 2018).
+Imports:raster,
+        sp,
+        parallel,
+        doParallel,
+        foreach,
+        rgeos,
+        stats,
+        maptools,
+        data.table,
+License: GPL-3
+Encoding: UTF-8
+LazyData: true
+RoxygenNote: 7.1.2
+ 
